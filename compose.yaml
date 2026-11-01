@@ -13,9 +13,15 @@ services:
       TRUSTED_HOSTS: ${TRUSTED_HOSTS:-}
     volumes:
       - lanscan-data:/data
+    networks:
+      - highfishnetwork
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     stop_grace_period: 15s
 volumes:
   lanscan-data:
     name: hai-lanscan-data
+networks:
+  highfishnetwork:
+    external: true
+    name: highfishnetwork
