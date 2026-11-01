@@ -38,7 +38,7 @@ services:
   telegram:
     image: ghcr.io/jbkunama1/hai.lanscan:${LANSCAN_VERSION:-latest}
     container_name: hai-lanscan-telegram
-    command: ["python", "integrations.py", "bot"]
+    command: ["python", "telegram_ui.py"]
     restart: unless-stopped
     depends_on: [lanscan]
     environment:
@@ -46,6 +46,10 @@ services:
       MCP_TOKEN: ${MCP_TOKEN:?Set MCP_TOKEN}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_ADMIN_IDS: ${TELEGRAM_ADMIN_IDS:-}
+      TELEGRAM_REPORT_TIME: ${TELEGRAM_REPORT_TIME:-08:00}
+      TELEGRAM_TIMEZONE: ${TELEGRAM_TIMEZONE:-Europe/Berlin}
+    volumes:
+      - bot-data:/botdata
     networks: [highfishnetwork]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
@@ -54,6 +58,8 @@ services:
 volumes:
   lanscan-data:
     name: hai-lanscan-data
+  bot-data:
+    name: hai-lanscan-bot-data
 networks:
   highfishnetwork:
     external: true
