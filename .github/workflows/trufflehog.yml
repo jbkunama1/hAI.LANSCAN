@@ -1,0 +1,13 @@
+name: Trufflehog
+on: [push, pull_request]
+jobs:
+  trufflehog:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Trufflehog OSS
+        uses: trufflesecurity/trufflehog@main
+        with:
+          base: ""
+          head: "${{ github.sha }}"
