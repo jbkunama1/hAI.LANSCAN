@@ -24,7 +24,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Python and JavaScript syntax
         run: |
-          python -m compileall -q core.py tests
+          python -m compileall -q core.py server.py integrations.py tests
           node --check static/v1.js
           node --check tests/browser.cjs
       - name: Backend tests
@@ -33,6 +33,7 @@ jobs:
         env:
           ADMIN_PASSWORD: ci-password-12345
           SECRET_KEY: ci-secret-not-production-1234567890123456789
+          MCP_TOKEN: ci-mcp-token-not-production-123456789012345
         run: |
           docker compose config -q
           docker compose -f compose.portainer.yaml config -q
@@ -42,9 +43,9 @@ jobs:
         run: |
           npm install --no-save playwright@1.51.1
           npx playwright install --with-deps chromium
-      - name: Container and mobile/desktop browser smoke tests
+      - name: Container, bearer API and mobile/desktop smoke tests
         run: |
-          docker run -d --name smoke -p 127.0.0.1:18088:8080 -e ADMIN_PASSWORD=ci-password-12345 -e SECRET_KEY=ci-secret-not-production-1234567890123456789 hai-lanscan:ci
+          docker run -d --name smoke -p 127.0.0.1:18088:8080 -e ADMIN_PASSWORD=ci-password-12345 -e SECRET_KEY=ci-secret-not-production-1234567890123456789 -e MCP_TOKEN=ci-mcp-token-not-production-123456789012345 hai-lanscan:ci
           trap 'docker logs smoke; docker rm -f smoke' EXIT
           ready=0
           for i in $(seq 1 30); do
@@ -52,6 +53,9 @@ jobs:
             sleep 2
           done
           test "$ready" = 1
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18088/api/settings)" = 401
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Authorization: Bearer wrong-token' http://127.0.0.1:18088/api/settings)" = 401
+          curl -fsS -H 'Authorization: Bearer ci-mcp-token-not-production-123456789012345' http://127.0.0.1:18088/api/settings | python -c "import json,sys; assert 'targets' in json.load(sys.stdin)"
           node tests/browser.cjs
   publish:
     if: github.event_name != 'pull_request'
