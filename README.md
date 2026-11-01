@@ -1,63 +1,88 @@
-# hAI.LANSCAN
+# hAI.LANSCAN · v1.0
 
-Eigener, schlanker LAN-TCP-Scanner mit Mobile-first-Weboberfläche und dauerhaftem SQLite-Index. MIT-Lizenz. Kein Nmap, kein fremdes Scanner-Frontend.
+Eigener LAN-TCP-Scanner, Mobile-first-Oberfläche und persistenter SQLite-Index. MIT-Lizenz, keine Nmap-Abhängigkeit. Aktiver Server: `core.py` (die älteren Dateien `app.py` und Templates bleiben nur als Legacy-Stand im Repository).
 
-## Funktionen im ersten Stand
-- Einzelhost, Hostname, mehrere Ziele, IPv4-Range und CIDR, maximal 256 Hosts
-- Alle TCP-Ports oder eigene Portauswahl, parallele Verbindungsprüfung ohne Ping-Voraussetzung
-- HTTP/HTTPS-Abfrage von /: Titel, Status, Server und begrenzter HTML-Body
-- SQLite-Inventar, erster/letzter Fund und Scan-Historie
-- Mobile Host-Karten, Suche, CSV- und JSON-Ausgabe
-- Administrator-Anmeldung, CSRF-Schutz, Session, begrenzte Login-Versuche
-- Ocean-, Dark- und Light-Theme
-- Admin: Standardziele, Ports, Timeout, Parallelität, HTTP-Abfrage und Theme
+## Enthalten
+- IPv4-Host, Hostname, Range und CIDR; maximal 256 Hosts, alle TCP-Ports oder eigene Auswahl
+- Sofortiges Speichern offener Ports vor optionaler HTTP-/HTTPS-Abfrage
+- Scan-Abbruch mit Erhalt bereits gespeicherter Funde; Fehler und Neustarts getrennt markiert
+- Explizit geschlossene SQLite-Verbindungen, serialisierte Schreibzugriffe, garantierte Freigabe der Scan-Sperre
+- Namen, Tags, Notizen und mobile Hostdetails; numerisch sortierte IPs
+- Scope-bewusster Vergleich vollständiger Scans, neue/zurückgekehrte/fehlende Ports
+- Filter für Webdienste, Änderungen und seit mindestens sieben Tagen nicht gesehene Funde
+- Passwort-Anmeldung, Passwortwechsel im Adminbereich mit Session-Invalidierung, CSRF und CSP
+- Light, Dark, Ocean; Standardziele, Ports, Timeout, Parallelität und HTTP-Probes konfigurierbar
+- CSV/JSON-Export; Healthcheck; CI mit Backend-Tests, JavaScript-Prüfung und Browser-Smoke-Tests
+- GHCR-Publishing nach bestandenen Tests, amd64 und arm64
 
-Noch nicht enthalten: Scheduler, Passwortwechsel im UI, Tags/Notizen, IPv6, UDP, Banner-/Versionserkennung, Scan-Abbruch und Mehrbenutzerrollen. Dauerbetrieb des Containers ist möglich, Scans werden vorerst manuell ausgelöst.
+Keine Zeitpläne in v1.0. Scheduler frühestens in v1.1. Kein UDP/IPv6, kein Exploit-/Passwortscan, keine echte Banner-/Versionserkennung.
 
-## Start auf dem vorgesehenen Host 192.168.178.1
-Voraussetzung: Dieser Host kann tatsächlich Docker ausführen; die Adresse allein bestätigt das nicht. Keine Installation auf einem Router voraussetzen.
-
+## Lokal bauen
 ```sh
 git clone https://github.com/jbkunama1/hAI.LANSCAN.git
 cd hAI.LANSCAN
 cp .env.example .env
-# .env mit joe bearbeiten: eigenes langes ADMIN_PASSWORD und zufälligen SECRET_KEY setzen
-# Beispiel für einen Secret-Key: openssl rand -hex 32
+joe .env
+# Eigenes ADMIN_PASSWORD (mind. 12 Zeichen), zufälligen SECRET_KEY (mind. 32 Zeichen) setzen.
+# Secret erzeugen: openssl rand -hex 32
 docker compose up -d --build
 ```
+Vorgesehener Host: 192.168.178.1, Oberfläche http://192.168.178.1:8088. Voraussetzung: Dort läuft Docker und Port 8088 ist frei. Das Repository installiert nichts automatisch auf diesem Host.
 
-Browser: http://192.168.178.1:8088
+## Portainer / Registry
+`compose.portainer.yaml` als Stack einfügen und Variablen in Portainer setzen. Es benötigt keinen lokalen Build-Kontext.
+- ADMIN_PASSWORD: eigenes langes Initialpasswort
+- SECRET_KEY: zufälliger Session-Schlüssel
+- ALLOWED_NETWORKS: 192.168.178.0/24 oder explizit freigegebene Netze, kommagetrennt
+- LANSCAN_PORT: 8088
+- LANSCAN_VERSION: latest oder ein veröffentlichter sha-Tag für reproduzierbare Updates
+- COOKIE_SECURE: true nur bei HTTPS-Betrieb
+- TRUSTED_HOSTS: optional erlaubte Hostnamen/IPs ohne Ports, kommagetrennt
 
+Image: `ghcr.io/jbkunama1/hai.lanscan:latest`. Erst verwendbar, sobald der Publish-Job erfolgreich war. Ein öffentliches Repository garantiert nicht automatisch die öffentliche Sichtbarkeit des GHCR-Pakets: falls anonymes Pull fehlschlägt, Package Settings prüfen oder Portainer-Registry authentifizieren. Verfügbarkeit und CI-Erfolg werden nicht durch diese README behauptet.
+
+## Persistenz / Upgrade
+Volume heißt nun explizit `hai-lanscan-data`, DB liegt unter /data/index.sqlite. Vor einem Upgrade vom ersten Stand prüfen: dessen Compose-Volume kann `<projekt>_lanscan-data` heißen. Um vorhandene Daten zu behalten, den neuen Volume-Namen in BEIDEN Compose-Dateien auf den bisherigen tatsächlichen Namen ändern oder Daten bei gestopptem Container vollständig übertragen. Nicht versehentlich mit einem neuen leeren Volume starten. Zusatz-Tabellen werden automatisch angelegt; alte Scanläufe ohne gespeicherten Scope können nicht rückwirkend zuverlässig verglichen werden.
+
+ADMIN_PASSWORD initialisiert nur beim ersten Start den in SQLite gespeicherten Passwort-Hash. Nach einem Passwortwechsel im UI gilt das DB-Passwort, nicht ein später geänderter Environment-Wert. SECRET_KEY-Wechsel meldet Sessions ab. Beispielwerte werden beim Start abgelehnt.
+
+## Scan- und Index-Semantik
+- Offene TCP-Verbindung wird sofort gespeichert. HTTP-Metadaten folgen nachgelagert innerhalb derselben Worker; keine zweite Scan-Queue.
+- Abbruch beendet laufende Netzwerkaufgaben, kein Fortsetzen nach Neustart. Bereits gespeicherte Funde bleiben.
+- Vergleich nur zwischen vollständig erfolgreich beendeten Scans, die dieselbe IP und denselben Port abdeckten. Abgebrochene oder fehlerhafte Scans erzeugen keine negativen Aussagen.
+- `not_found` bedeutet keine erfolgreiche Verbindung, NICHT nachweislich geschlossen; Filter/Timeout/offline können die Ursache sein.
+- `not_checked`: letzter Lauf enthielt die IP oder den Port nicht. `observed_partial`: positiver Fund eines noch laufenden/abgebrochenen/fehlerhaften Laufs. Weitere Vergleichsfelder beziehen sich weiterhin auf abgeschlossene passende Läufe.
+- Filter 'Neu' bedeutet bisher in genau einem Scan gefunden; kein zeitlich begrenztes Ereignis. DHCP-Wechsel werden nicht als stabile Geräteidentität erkannt.
+- HTTP-Daten sind der letzte erfolgreiche Webabruf, nicht zwingend aus dem letzten Scan. HTML und Metadaten bleiben bei fehlgeschlagener erneuter HTTP-Abfrage erhalten; last_seen bezieht sich auf TCP.
+- Portname ist eine lokale Zuordnung, keine verifizierte Diensterkennung.
+- Ganznetz-Vollscans können Stunden dauern. Die Oberfläche lädt den gesamten Index; Pagination und Historiensäuberung sind noch nicht enthalten.
+
+## Sicherheit und Grenzen
+Nur eigene/autorisiert verwaltete Systeme. Aktive TCP-/HTTP-Probes können empfindliche Geräte stören. HTTP-Abfrage abschaltbar. Ziel-IP-Prüfung gegen ALLOWED_NETWORKS nach DNS-Auflösung. Nur TCP/IPv4. Ein Gunicorn-Worker (vier HTTP-Threads), ein Scan gleichzeitig. Status und Sperre sind pro Prozess.
+
+HTTP-Abfrage: GET /, maximal 64 KiB gesamte Antwort, je Versuch 2,5 s, kein JavaScript, keine Redirects/Unterseiten, vereinfachte UTF-8-Auswertung. Selbstsignierte Zertifikate akzeptiert, keine Zertifikatsidentitätsprüfung. HTML wird nur gespeichert und nicht im Browser ausgeführt. DB und Backups können vertrauliche Informationen enthalten.
+
+Nur vertrauenswürdiges LAN; für verschlüsselte Anmeldung HTTPS-Reverse-Proxy verwenden und COOKIE_SECURE=true setzen. Ohne HTTPS kann Netzwerkverkehr mitgelesen werden. Login-Limit global: zehn Versuche je fünf Minuten; gültige Versuche zählen ebenfalls. /healthz öffentlich, Inventar/API und statische App-Dateien erfordern Anmeldung. Kein ungeschützter Automatisierungs-Endpunkt.
+
+## Backup / Restore
+Für eine einfache konsistente Kopie Container stoppen und den kompletten Volume-Inhalt inklusive eventueller WAL-/SHM-Dateien sichern. Beispiel (lokaler Build-Stack):
 ```sh
-docker compose logs -f
-docker compose down
+docker compose stop lanscan
+mkdir -p backups
+# Helper-Image vorab laden, falls nötig. Backup-Verzeichnis ist der aktuelle Projektordner/backups.
+docker run --rm -v hai-lanscan-data:/data:ro -v "$PWD/backups:/backup" alpine:3.21 tar czf /backup/lanscan-data.tgz -C /data .
+docker compose start lanscan
 ```
-
-SQLite bleibt im benannten Volume erhalten. `docker compose down -v` löscht die Daten! Port 8088 muss frei sein. Für Portainer müssen Dockerfile und Dateien als Build-Kontext verfügbar sein; Compose allein reicht nicht. Alternativ das in CI geprüfte Dockerfile auf dem Host bauen. Dieser erste Workflow veröffentlicht noch kein Registry-Image.
-
-## Sicherheit
-Nur eigene/autorisiert verwaltete Netze scannen. Kein Exploit- oder Passwortscan. TCP- und HTTP-Probes erzeugen echte Verbindungen, auch zu empfindlichen IoT-Geräten. HTTP-Abfrage bei Bedarf abschalten. ALLOWED_NETWORKS in .env begrenzt Ziele serverseitig, Standard 192.168.178.0/24. DNS wird vor dem Scan aufgelöst und jede IP geprüft.
-
-Nicht öffentlich exponieren. Für verschlüsselte Anmeldung HTTPS über einen passenden Reverse Proxy verwenden und COOKIE_SECURE=true setzen. Bei direktem HTTP schützt die Anmeldung nicht vor Mitlesen im Netzwerk. Passwort und Secret ausschließlich lokal setzen, niemals committen. Passwortwechsel erfolgt in .env mit Container-Neuerstellung; SECRET_KEY-Wechsel meldet bestehende Sessions ab. Login-Limit gilt global pro Prozess: zehn Versuche in fünf Minuten, auch gültige Versuche zählen. Bei vielen Nutzern ist ein externer Auth-Dienst sinnvoll.
-
-## Was die Ergebnisse bedeuten
-Portnamen stammen aus der lokalen Service-Tabelle, keine verifizierte Diensterkennung. Nur erfolgreicher TCP-Verbindungsaufbau wird erfasst. Closed/filtered/offline werden nicht unterschieden. Kurze Timeouts können Hosts/Ports übersehen. Historische Funde bleiben stehen: last_seen ist keine Garantie aktueller Erreichbarkeit. DHCP-Wechsel werden nicht als stabile Geräteidentität verfolgt.
-
-Für jeden offenen Port werden optional HTTP und HTTPS versucht, je maximal 2,5 Sekunden. Nur /, keine Redirects, kein JavaScript, keine Unterseiten. Antwortlimit 64 KiB inklusive Header; UTF-8 mit Ersatzzeichen, keine vollständige Browser-/Kompressions-/Charset-Unterstützung. Selbstsignierte TLS-Zertifikate werden akzeptiert, Identität nicht verifiziert. HTML liegt nur in SQLite und wird nicht im Browser gerendert. Datenbank/Backups können vertrauliche Informationen enthalten.
-
-Ein Scan gleichzeitig; alle TCP-Ports in einem /24 können Stunden dauern. Ein Container-Neustart unterbricht den Scan; vorhandene Funde bleiben erhalten, der Lauf wird als interrupted markiert. Keine Wiederaufnahme. Nur ein Gunicorn-Worker erlaubt, da Scan-Sperre und Status pro Prozess verwaltet werden.
-
-## Daten / API
-SQLite: /data/index.sqlite
-- services: letzter Fund je IP+Port, HTML, HTTP-Daten, first_seen, last_seen
-- scans: Läufe und Fehler
-- observations: offene Ports je Lauf, keine vollständigen HTML-Snapshots
-- settings: Admin-Einstellungen
-
-GET /api/services, GET /api/status, GET /api/scans und GET /api/export.csv erfordern Anmeldung. POST /api/scan und POST /api/settings benötigen zusätzlich X-CSRF-Token aus der angemeldeten Session. Keine ungeschützte Automatisierungs-API.
-
-## GitHub Pages
-Die öffentliche Projektseite liegt unter docs/index.html. Unter Settings → Pages die Quelle 'Deploy from a branch', Branch main und Ordner /docs wählen. Sie ist rein statisch: weder Scanner noch LAN-Daten oder Zugangsdaten werden dort veröffentlicht. Pages ist durch den Commit nicht automatisch aktiviert.
+Backups außerhalb des Hosts geschützt aufbewahren. Wiederherstellung: Container stoppen, Sicherung in das richtige, leere Volume entpacken, Eigentümer UID/GID 10001:10001 prüfen, Container starten. Nicht über eine laufende Datenbank kopieren. `docker compose down -v` löscht das Volume!
 
 ## Build und Tests
-GitHub Actions führt Syntaxprüfung, Unit-Tests und Docker-Build durch. Es findet kein Scan des eigenen LANs auf GitHub statt. Der tatsächliche erste Workflow-Status muss nach dem Push kontrolliert werden; diese README behauptet keinen erfolgreichen Build. HTTP-Sonderfälle, Browserdarstellung und echter LAN-Betrieb benötigen einen lokalen Funktionstest.
+Actions: Backend-Tests, Python/JS-Syntax, Compose-Prüfung, Docker-Build, Login/Navigation/Theme in Chromium bei Handy-/Desktop-Auflösung. Danach Multiarch-Build und GHCR-Push. ARM64 wird gebaut, aber nicht mit Browser-Smoke-Test auf ARM-Hardware ausgeführt. CI scannt kein privates LAN; Netzverhalten wird mit Mocks getestet. Echte LAN-/TLS-/Fehlerfälle benötigen zusätzlich lokalen Test. Tests lokal:
+```sh
+pip install -r requirements.txt
+python -m unittest discover -s tests -p 'test_core.py' -v
+node --check static/v1.js
+```
+Legacy-Test `tests/test_app.py` gehört nicht zur aktiven v1-Suite.
+
+## Pages
+`docs/index.html` ist die statische öffentliche Projektseite. Settings → Pages → Deploy from a branch → main → /docs. Pages wird nicht automatisch aktiviert. Dort liegen keine LAN-Daten oder Login-Secrets. Die Projektseite kann noch den allgemeinen ersten Funktionsumfang beschreiben; maßgeblich für v1 ist diese README.

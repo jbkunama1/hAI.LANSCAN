@@ -4,15 +4,18 @@ services:
     container_name: hai-lanscan
     restart: unless-stopped
     ports:
-      - "8088:8080"
+      - "${LANSCAN_PORT:-8088}:8080"
     environment:
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
-      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a unique ADMIN_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY:?Set a random SECRET_KEY}
       ALLOWED_NETWORKS: ${ALLOWED_NETWORKS:-192.168.178.0/24}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-}
     volumes:
       - lanscan-data:/data
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+    stop_grace_period: 15s
 volumes:
   lanscan-data:
+    name: hai-lanscan-data
