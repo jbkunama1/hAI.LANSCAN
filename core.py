@@ -24,8 +24,8 @@ log = logging.getLogger('lanscan')
 VERSION = '1.0.0'
 password = os.environ['ADMIN_PASSWORD']
 secret = os.environ['SECRET_KEY']
-if len(password) < 12 or password.startswith('replace-with') or len(secret) < 32 or secret.startswith('replace-with'):
-    raise RuntimeError('Set a unique ADMIN_PASSWORD (12+ characters) and random SECRET_KEY (32+ characters)')
+if len(password) < 1 or password.startswith('replace-with') or len(secret) < 24 or secret.startswith('replace-with'):
+    raise RuntimeError('Set a unique ADMIN_PASSWORD (1+ characters) and random SECRET_KEY (24+ characters)')
 DB = os.getenv('DB_PATH', '/data/index.sqlite')
 NETWORKS = [ipaddress.IPv4Network(n.strip()) for n in os.getenv('ALLOWED_NETWORKS', '192.168.178.0/24').split(',')]
 app = Flask(__name__)
@@ -389,7 +389,7 @@ def save_host():
 @app.post('/api/password')
 def change_password():
     d=request.get_json(); new=d.get('new','')
-    if not isinstance(new,str) or not 12<=len(new)<=256 or new.startswith('replace-with'): return jsonify(error='Neues Passwort: 12 bis 256 Zeichen'),400
+    if not isinstance(new,str) or not 1<=len(new)<=256 or new.startswith('replace-with'): return jsonify(error='Neues Passwort: 1 bis 256 Zeichen'),400
     with db(True) as c:
         credential=c.execute('SELECT * FROM credentials WHERE id=1').fetchone()
         if not check_password_hash(credential['hash'],d.get('current','')): return jsonify(error='Bisheriges Passwort falsch'),403
