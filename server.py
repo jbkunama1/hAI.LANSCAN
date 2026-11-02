@@ -11,6 +11,8 @@ ALLOWED = {('GET','/api/status'),('GET','/api/services'),('GET','/api/scans'),('
 original = core.protect
 
 def protect():
+    if request.endpoint=='static' and request.path in ('/static/v1.css','/static/discovery.css','/static/theme.js'):
+        return None
     header=request.headers.get('Authorization','')
     if header.startswith('Bearer ') and (request.method,request.path) in ALLOWED:
         supplied=header[7:].encode('utf-8')
@@ -24,3 +26,6 @@ app.before_request_funcs[None] = [protect if func is original else func for func
 @app.get('/api/settings')
 def read_settings():
     return jsonify(core.settings())
+
+from discovery import install
+install(app,core)
